@@ -1,16 +1,12 @@
 """
 DA Job Market Dashboard — Vietnam
-Streamlit app đọc dữ liệu từ PostgreSQL (Supabase) và hiển thị phân tích.
+Dùng Supabase REST API (httpx) thay vì kết nối PostgreSQL trực tiếp.
 """
-import os
+import httpx
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
-
-load_dotenv()
 
 st.set_page_config(
     page_title="DA Job Market Vietnam",
@@ -19,76 +15,83 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────────────────
-# Database helpers
+# Supabase REST API helpers
 # ─────────────────────────────────────────────────────────
 
-@st.cache_resource
-def get_engine():
-    # Streamlit Cloud: đọc từ st.secrets trước, fallback sang os.getenv (local)
-    url = st.secrets.get("DATABASE_URL") if hasattr(st, "secrets") else None
-    if not url:
-        url = os.getenv("DATABASE_URL")
-    if not url:
-        st.error("DATABASE_URL not set. Add it in Streamlit Cloud Secrets or .env file.")
+def get_supabase_config():
+    if hasattr(st, "secrets") and "SUPABASE_URL" in st.secrets:
+        return st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]
+    import os
+    return os.getenv("SUPABASE_URL", ""), os.getenv("SUPABASE_KEY", "")
+
+
+def supabase_get(table: str, select: str = "*", extra_params: dict = None) -> list:
+    url, key = get_supabase_config()
+    if not url or not key:
+        st.error("SUPABASE_URL hoặc SUPABASE_KEY chưa được cấu hình.")
         st.stop()
-    return create_engine(url, pool_pre_ping=True)
+
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+    params = {"select": select, "limit": "2000"}
+    if extra_params:
+        params.update(extra_params)
+
+    resp = httpx.get(f"{url}/rest/v1/{table}", headers=headers, params=params, timeout=20)
+    resp.raise_for_status()
+    return resp.json()
 
 
 @st.cache_data(ttl=300)
 def load_jobs() -> pd.DataFrame:
-    engine = get_engine()
-    query = """
-        SELECT
-            j.id, j.title, j.title_normalized, j.location, j.level,
-            j.salary_min, j.salary_max, j.salary_raw, j.is_active,
-            j.first_seen_at, j.last_seen_at, j.closed_at,
-            c.name   AS company,
-            s.name   AS source
-        FROM jobs j
-        LEFT JOIN companies c ON j.company_id = c.id
-        LEFT JOIN sources   s ON j.source_id  = s.id
-        ORDER BY j.first_seen_at DESC
-    """
-    with engine.connect() as conn:
-        return pd.read_sql(text(query), conn, parse_dates=["first_seen_at", "last_seen_at", "closed_at"])
+    rows = supabase_get(
+        "jobs",
+        select="id,title,location,level,salary_min,salary_max,salary_raw,is_active,first_seen_at,last_seen_at,closed_at,companies(name),sources(name)"
+    )
+    df = pd.json_normalize(rows)
+    df = df.rename(columns={"companies.name": "company", "sources.name": "source"})
+    for col in ["first_seen_at", "last_seen_at", "closed_at"]:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+    return df
 
 
 @st.cache_data(ttl=300)
 def load_skills() -> pd.DataFrame:
-    engine = get_engine()
-    query = """
-        SELECT sk.name AS skill, COUNT(*) AS count
-        FROM job_skills js
-        JOIN skills sk ON js.skill_id = sk.id
-        GROUP BY sk.name
-        ORDER BY count DESC
-    """
-    with engine.connect() as conn:
-        return pd.read_sql(text(query), conn)
+    rows = supabase_get("job_skills", select="skills(name)")
+    names = [r["skills"]["name"] for r in rows if r.get("skills")]
+    if not names:
+        return pd.DataFrame(columns=["skill", "count"])
+    s = pd.Series(names).value_counts().reset_index()
+    s.columns = ["skill", "count"]
+    return s
 
 
 @st.cache_data(ttl=300)
 def load_weekly_snapshots() -> pd.DataFrame:
-    engine = get_engine()
-    query = """
-        SELECT
-            ws.week_start, ws.active_jobs, ws.new_jobs, ws.closed_jobs,
-            s.name AS source
-        FROM weekly_snapshots ws
-        LEFT JOIN sources s ON ws.source_id = s.id
-        ORDER BY ws.week_start, s.name
-    """
-    with engine.connect() as conn:
-        return pd.read_sql(text(query), conn, parse_dates=["week_start"])
+    rows = supabase_get(
+        "weekly_snapshots",
+        select="week_start,active_jobs,new_jobs,closed_jobs,sources(name)"
+    )
+    df = pd.json_normalize(rows)
+    if "sources.name" in df.columns:
+        df = df.rename(columns={"sources.name": "source"})
+    if "week_start" in df.columns:
+        df["week_start"] = pd.to_datetime(df["week_start"], errors="coerce")
+    return df
 
 
 # ─────────────────────────────────────────────────────────
 # Load data
 # ─────────────────────────────────────────────────────────
 
-df_jobs    = load_jobs()
-df_skills  = load_skills()
-df_weekly  = load_weekly_snapshots()
+df_jobs   = load_jobs()
+df_skills = load_skills()
+df_weekly = load_weekly_snapshots()
 
 # ─────────────────────────────────────────────────────────
 # Header
@@ -101,36 +104,37 @@ st.caption("Dữ liệu crawl từ TopCV · VietnamWorks · YBox · LinkedIn")
 # KPI cards
 # ─────────────────────────────────────────────────────────
 
-total_jobs   = len(df_jobs)
-active_jobs  = df_jobs["is_active"].sum()
-closed_jobs  = total_jobs - active_jobs
-sources      = df_jobs["source"].nunique()
+total_jobs  = len(df_jobs)
+active_jobs = int(df_jobs["is_active"].sum()) if "is_active" in df_jobs.columns else 0
+closed_jobs = total_jobs - active_jobs
+sources     = df_jobs["source"].nunique() if "source" in df_jobs.columns else 0
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Tổng số jobs", total_jobs)
-c2.metric("Đang tuyển dụng", int(active_jobs))
-c3.metric("Đã đóng", int(closed_jobs))
+c2.metric("Đang tuyển dụng", active_jobs)
+c3.metric("Đã đóng", closed_jobs)
 c4.metric("Nguồn dữ liệu", sources)
 
 st.divider()
 
 # ─────────────────────────────────────────────────────────
-# Row 1: Phân bổ theo nguồn & theo level
+# Row 1: Theo nguồn & level
 # ─────────────────────────────────────────────────────────
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Job theo nguồn tuyển dụng")
-    by_source = df_jobs.groupby("source").size().reset_index(name="count")
-    fig = px.pie(by_source, names="source", values="count",
-                 color_discrete_sequence=px.colors.qualitative.Set2)
-    fig.update_traces(textposition="inside", textinfo="percent+label")
-    st.plotly_chart(fig, use_container_width=True)
+    if "source" in df_jobs.columns:
+        by_source = df_jobs.groupby("source").size().reset_index(name="count")
+        fig = px.pie(by_source, names="source", values="count",
+                     color_discrete_sequence=px.colors.qualitative.Set2)
+        fig.update_traces(textposition="inside", textinfo="percent+label")
+        st.plotly_chart(fig, use_container_width=True)
 
 with col2:
     st.subheader("Phân bổ theo cấp bậc")
-    level_df = df_jobs[df_jobs["level"].notna()]
+    level_df = df_jobs[df_jobs["level"].notna()] if "level" in df_jobs.columns else pd.DataFrame()
     if len(level_df):
         by_level = level_df.groupby("level").size().reset_index(name="count")
         fig2 = px.bar(by_level.sort_values("count", ascending=True),
@@ -143,7 +147,7 @@ with col2:
         st.info("Chưa có dữ liệu cấp bậc")
 
 # ─────────────────────────────────────────────────────────
-# Row 2: Top skills & địa điểm
+# Row 2: Skills & địa điểm
 # ─────────────────────────────────────────────────────────
 
 col3, col4 = st.columns(2)
@@ -154,8 +158,7 @@ with col3:
         top_skills = df_skills.head(15)
         fig3 = px.bar(top_skills.sort_values("count"),
                       x="count", y="skill", orientation="h",
-                      color="count",
-                      color_continuous_scale="Blues")
+                      color="count", color_continuous_scale="Blues")
         fig3.update_layout(showlegend=False, yaxis_title="", xaxis_title="Số jobs yêu cầu",
                            coloraxis_showscale=False)
         st.plotly_chart(fig3, use_container_width=True)
@@ -164,22 +167,22 @@ with col3:
 
 with col4:
     st.subheader("Phân bổ theo địa điểm")
-    loc_df = df_jobs[df_jobs["location"].notna() & (df_jobs["location"] != "Unknown")]
-    if len(loc_df):
-        by_loc = loc_df.groupby("location").size().reset_index(name="count")
-        by_loc = by_loc.sort_values("count", ascending=False).head(10)
-        fig4 = px.bar(by_loc.sort_values("count"),
-                      x="count", y="location", orientation="h",
-                      color="count",
-                      color_continuous_scale="Greens")
-        fig4.update_layout(showlegend=False, yaxis_title="", xaxis_title="Số jobs",
-                           coloraxis_showscale=False)
-        st.plotly_chart(fig4, use_container_width=True)
-    else:
-        st.info("Chưa có dữ liệu địa điểm")
+    if "location" in df_jobs.columns:
+        loc_df = df_jobs[df_jobs["location"].notna() & (df_jobs["location"] != "Unknown")]
+        if len(loc_df):
+            by_loc = loc_df.groupby("location").size().reset_index(name="count")
+            by_loc = by_loc.sort_values("count", ascending=False).head(10)
+            fig4 = px.bar(by_loc.sort_values("count"),
+                          x="count", y="location", orientation="h",
+                          color="count", color_continuous_scale="Greens")
+            fig4.update_layout(showlegend=False, yaxis_title="", xaxis_title="Số jobs",
+                               coloraxis_showscale=False)
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("Chưa có dữ liệu địa điểm")
 
 # ─────────────────────────────────────────────────────────
-# Row 3: Lương & xu hướng theo tuần
+# Row 3: Lương & xu hướng tuần
 # ─────────────────────────────────────────────────────────
 
 st.divider()
@@ -187,22 +190,29 @@ col5, col6 = st.columns(2)
 
 with col5:
     st.subheader("Phân bổ mức lương (triệu VND/tháng)")
-    sal_df = df_jobs[(df_jobs["salary_min"].notna()) & (df_jobs["salary_min"] > 0)].copy()
-    if len(sal_df):
-        sal_df["salary_avg_m"] = ((sal_df["salary_min"] + sal_df["salary_max"].fillna(sal_df["salary_min"])) / 2 / 1_000_000)
-        sal_df = sal_df[sal_df["salary_avg_m"] < 200]  # loại outliers
-        fig5 = px.histogram(sal_df, x="salary_avg_m", nbins=20,
-                            color_discrete_sequence=["#636EFA"],
-                            labels={"salary_avg_m": "Lương trung bình (triệu/tháng)"})
-        fig5.update_layout(yaxis_title="Số jobs")
-        st.plotly_chart(fig5, use_container_width=True)
-    else:
-        st.info("Chưa có đủ dữ liệu lương có thể so sánh")
+    if "salary_min" in df_jobs.columns:
+        sal_df = df_jobs[(df_jobs["salary_min"].notna()) & (df_jobs["salary_min"] > 0)].copy()
+        if len(sal_df):
+            sal_df["salary_avg_m"] = (
+                (sal_df["salary_min"] + sal_df["salary_max"].fillna(sal_df["salary_min"])) / 2 / 1_000_000
+            )
+            sal_df = sal_df[sal_df["salary_avg_m"] < 200]
+            fig5 = px.histogram(sal_df, x="salary_avg_m", nbins=20,
+                                color_discrete_sequence=["#636EFA"],
+                                labels={"salary_avg_m": "Lương trung bình (triệu/tháng)"})
+            fig5.update_layout(yaxis_title="Số jobs")
+            st.plotly_chart(fig5, use_container_width=True)
+        else:
+            st.info("Chưa có đủ dữ liệu lương")
 
 with col6:
     st.subheader("Xu hướng job theo tuần")
-    if len(df_weekly):
-        weekly_total = df_weekly.groupby("week_start")[["active_jobs", "new_jobs", "closed_jobs"]].sum().reset_index()
+    if len(df_weekly) and "week_start" in df_weekly.columns:
+        cols_needed = ["active_jobs", "new_jobs", "closed_jobs"]
+        for c in cols_needed:
+            if c not in df_weekly.columns:
+                df_weekly[c] = 0
+        weekly_total = df_weekly.groupby("week_start")[cols_needed].sum().reset_index()
         fig6 = go.Figure()
         fig6.add_trace(go.Scatter(x=weekly_total["week_start"], y=weekly_total["active_jobs"],
                                   mode="lines+markers", name="Đang tuyển",
@@ -212,28 +222,30 @@ with col6:
         fig6.add_trace(go.Bar(x=weekly_total["week_start"], y=weekly_total["closed_jobs"],
                               name="Job đóng", marker_color="#EF553B", opacity=0.7))
         fig6.update_layout(barmode="group", xaxis_title="Tuần",
-                           yaxis_title="Số lượng jobs", legend=dict(orientation="h"))
+                           yaxis_title="Số lượng", legend=dict(orientation="h"))
         st.plotly_chart(fig6, use_container_width=True)
     else:
-        st.info("Chưa đủ dữ liệu tuần để hiển thị xu hướng")
+        st.info("Chưa đủ dữ liệu tuần")
 
 # ─────────────────────────────────────────────────────────
-# Row 4: Job list
+# Row 4: Danh sách jobs
 # ─────────────────────────────────────────────────────────
 
 st.divider()
 st.subheader("Danh sách jobs DA đang tuyển")
 
-active_df = df_jobs[df_jobs["is_active"] == True].copy()
+active_df = df_jobs[df_jobs["is_active"] == True].copy() if "is_active" in df_jobs.columns else df_jobs.copy()
 
-# Filters
 fcol1, fcol2, fcol3 = st.columns(3)
 with fcol1:
-    src_filter = st.multiselect("Nguồn", options=active_df["source"].unique().tolist(), default=[])
+    src_opts = active_df["source"].dropna().unique().tolist() if "source" in active_df.columns else []
+    src_filter = st.multiselect("Nguồn", options=src_opts, default=[])
 with fcol2:
-    loc_filter = st.multiselect("Địa điểm", options=sorted(active_df["location"].dropna().unique().tolist()), default=[])
+    loc_opts = sorted(active_df["location"].dropna().unique().tolist()) if "location" in active_df.columns else []
+    loc_filter = st.multiselect("Địa điểm", options=loc_opts, default=[])
 with fcol3:
-    lvl_filter = st.multiselect("Cấp bậc", options=sorted(active_df["level"].dropna().unique().tolist()), default=[])
+    lvl_opts = sorted(active_df["level"].dropna().unique().tolist()) if "level" in active_df.columns else []
+    lvl_filter = st.multiselect("Cấp bậc", options=lvl_opts, default=[])
 
 filtered = active_df.copy()
 if src_filter:
@@ -243,17 +255,14 @@ if loc_filter:
 if lvl_filter:
     filtered = filtered[filtered["level"].isin(lvl_filter)]
 
-show_cols = ["title", "company", "source", "location", "level", "salary_raw", "first_seen_at"]
-show_df   = filtered[show_cols].rename(columns={
-    "title":         "Tên Job",
-    "company":       "Công ty",
-    "source":        "Nguồn",
-    "location":      "Địa điểm",
-    "level":         "Cấp bậc",
-    "salary_raw":    "Lương",
-    "first_seen_at": "Ngày thấy lần đầu",
+show_cols = [c for c in ["title", "company", "source", "location", "level", "salary_raw", "first_seen_at"] if c in filtered.columns]
+show_df = filtered[show_cols].rename(columns={
+    "title": "Tên Job", "company": "Công ty", "source": "Nguồn",
+    "location": "Địa điểm", "level": "Cấp bậc",
+    "salary_raw": "Lương", "first_seen_at": "Ngày thấy lần đầu",
 })
-show_df["Ngày thấy lần đầu"] = pd.to_datetime(show_df["Ngày thấy lần đầu"]).dt.strftime("%Y-%m-%d")
+if "Ngày thấy lần đầu" in show_df.columns:
+    show_df["Ngày thấy lần đầu"] = pd.to_datetime(show_df["Ngày thấy lần đầu"]).dt.strftime("%Y-%m-%d")
 
 st.dataframe(show_df, use_container_width=True, height=400)
 st.caption(f"Hiển thị {len(filtered)} / {len(active_df)} jobs đang tuyển")
