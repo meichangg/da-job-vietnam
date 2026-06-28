@@ -24,9 +24,12 @@ st.set_page_config(
 
 @st.cache_resource
 def get_engine():
-    url = os.getenv("DATABASE_URL")
+    # Streamlit Cloud: đọc từ st.secrets trước, fallback sang os.getenv (local)
+    url = st.secrets.get("DATABASE_URL") if hasattr(st, "secrets") else None
     if not url:
-        st.error("DATABASE_URL not set in .env")
+        url = os.getenv("DATABASE_URL")
+    if not url:
+        st.error("DATABASE_URL not set. Add it in Streamlit Cloud Secrets or .env file.")
         st.stop()
     return create_engine(url, pool_pre_ping=True)
 
