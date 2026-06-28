@@ -80,11 +80,15 @@ class LinkedInCrawler(BaseCrawler):
 
     def _login(self, page: Page) -> bool:
         try:
-            page.goto("https://www.linkedin.com/login", wait_until="networkidle", timeout=30_000)
-            page.fill("#username", self.email)
-            page.fill("#password", self.password)
-            page.click("button[type='submit']")
-            page.wait_for_url("**/feed/**", timeout=15_000)
+            page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=30_000)
+            # LinkedIn có 2 email inputs — cái thứ 2 mới là visible form
+            email_locator = page.locator("input[type='email']").nth(1)
+            email_locator.wait_for(state="visible", timeout=15_000)
+            email_locator.fill(self.email)
+            page.locator("input[type='password']").nth(1).fill(self.password)
+            # LinkedIn dùng type="button" thay vì type="submit", nút đăng nhập là cái cuối
+            page.locator("button").last.click()
+            page.wait_for_url("**/feed/**", timeout=30_000)
             logger.info("[LinkedIn] Login successful")
             time.sleep(random.uniform(2, 4))
             return True

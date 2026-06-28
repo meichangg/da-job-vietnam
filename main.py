@@ -25,10 +25,9 @@ DELAY        = float(os.getenv("CRAWL_DELAY_SECONDS", "2"))
 
 
 def run_crawlers(source_filter: str | None = None) -> dict:
-    from crawlers.ybox        import YBoxCrawler
+    from crawlers.ybox         import YBoxCrawler
     from crawlers.vietnamworks import VietnamWorksCrawler
-    from crawlers.topcv       import TopCVCrawler
-    from crawlers.linkedin    import LinkedInCrawler
+    from crawlers.topcv        import TopCVCrawler
 
     engine = get_engine(DATABASE_URL)
     init_db(engine)
@@ -37,7 +36,6 @@ def run_crawlers(source_filter: str | None = None) -> dict:
         "ybox":         YBoxCrawler,
         "vietnamworks": VietnamWorksCrawler,
         "topcv":        TopCVCrawler,
-        "linkedin":     LinkedInCrawler,
     }
 
     if source_filter:
@@ -135,7 +133,7 @@ def build_weekly_snapshot(session: Session):
 
 def main():
     parser = argparse.ArgumentParser(description="DA Job Market Vietnam Crawler")
-    parser.add_argument("--source",  type=str, help="Run specific source: ybox|vietnamworks|topcv|linkedin")
+    parser.add_argument("--source",  type=str, help="Run specific source: ybox|vietnamworks|topcv")
     parser.add_argument("--dry-run", action="store_true", help="Test crawlers without saving to DB")
     args = parser.parse_args()
 
