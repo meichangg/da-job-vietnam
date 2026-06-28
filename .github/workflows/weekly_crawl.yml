@@ -1,0 +1,40 @@
+name: Weekly DA Job Market Crawl
+
+on:
+  schedule:
+    - cron: '0 1 * * 1'   # Thứ Hai 8h sáng GMT+7 (1h UTC)
+  workflow_dispatch:        # Cho phép chạy tay
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium --with-deps
+
+      - name: Run all crawlers
+        env:
+          DATABASE_URL:            ${{ secrets.DATABASE_URL }}
+          LINKEDIN_EMAIL:          ${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD:       ${{ secrets.LINKEDIN_PASSWORD }}
+        run: python main.py
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawl-logs
+          path: "*.log"
+          retention-days: 7
