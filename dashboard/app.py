@@ -72,6 +72,20 @@ def load_skills() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def load_crawl_runs() -> pd.DataFrame:
+    rows = supabase_get(
+        "crawl_runs",
+        select="started_at,jobs_crawled,jobs_new,jobs_updated,status,sources(name)"
+    )
+    df = pd.json_normalize(rows)
+    if "sources.name" in df.columns:
+        df = df.rename(columns={"sources.name": "source"})
+    if "started_at" in df.columns:
+        df["started_at"] = pd.to_datetime(df["started_at"], errors="coerce")
+    return df
+
+
+@st.cache_data(ttl=300)
 def load_weekly_snapshots() -> pd.DataFrame:
     rows = supabase_get(
         "weekly_snapshots",
@@ -92,13 +106,14 @@ def load_weekly_snapshots() -> pd.DataFrame:
 df_jobs   = load_jobs()
 df_skills = load_skills()
 df_weekly = load_weekly_snapshots()
+df_runs   = load_crawl_runs()
 
 # ─────────────────────────────────────────────────────────
 # Header
 # ─────────────────────────────────────────────────────────
 
 st.title("📊 Thị trường tuyển dụng Data Analyst - Việt Nam")
-st.caption("Dữ liệu crawl từ TopCV · VietnamWorks · YBox · LinkedIn")
+st.caption("Dữ liệu crawl từ TopCV · VietnamWorks · YBox")
 
 # ─────────────────────────────────────────────────────────
 # KPI cards
@@ -114,6 +129,44 @@ c1.metric("Tổng số jobs", total_jobs)
 c2.metric("Đang tuyển dụng", active_jobs)
 c3.metric("Đã đóng", closed_jobs)
 c4.metric("Nguồn dữ liệu", sources)
+
+st.divider()
+
+# ─────────────────────────────────────────────────────────
+# Thống kê job mới / mất sau mỗi lần crawl
+# ─────────────────────────────────────────────────────────
+
+st.subheader("Biến động job sau mỗi lần crawl")
+if len(df_runs) and "jobs_new" in df_runs.columns:
+    recent = df_runs[df_runs["status"] == "success"].copy()
+    if len(recent):
+        # Tổng hợp theo lần crawl (started_at)
+        recent["date"] = recent["started_at"].dt.strftime("%Y-%m-%d %H:%M")
+        agg = recent.groupby("date")[["jobs_new", "jobs_crawled"]].sum().reset_index()
+        agg = agg.sort_values("date").tail(20)
+
+        fig_runs = go.Figure()
+        fig_runs.add_trace(go.Bar(x=agg["date"], y=agg["jobs_new"],
+                                   name="Job mới thêm", marker_color="#00CC96"))
+        fig_runs.add_trace(go.Scatter(x=agg["date"], y=agg["jobs_crawled"],
+                                       name="Tổng crawled", mode="lines+markers",
+                                       line=dict(color="#636EFA", dash="dot")))
+        fig_runs.update_layout(barmode="group", xaxis_title="Lần crawl",
+                               yaxis_title="Số lượng", legend=dict(orientation="h"),
+                               xaxis_tickangle=-30)
+        st.plotly_chart(fig_runs, use_container_width=True)
+
+        # Bảng chi tiết 10 lần crawl gần nhất
+        show_runs = recent.sort_values("started_at", ascending=False).head(10)
+        show_runs = show_runs[["date", "source", "jobs_crawled", "jobs_new", "jobs_updated"]].rename(columns={
+            "date": "Thời gian", "source": "Nguồn",
+            "jobs_crawled": "Tổng crawled", "jobs_new": "Job mới", "jobs_updated": "Cập nhật",
+        })
+        st.dataframe(show_runs, use_container_width=True, hide_index=True)
+    else:
+        st.info("Chưa có dữ liệu crawl runs")
+else:
+    st.info("Chưa có dữ liệu crawl runs")
 
 st.divider()
 

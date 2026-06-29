@@ -13,6 +13,9 @@ from utils.normalizer import is_da_job
 CATEGORY_URLS = [
     "https://www.topcv.vn/viec-lam-it",
     "https://www.topcv.vn/viec-lam-kinh-doanh",
+    "https://www.topcv.vn/tim-viec-lam-data-analyst",
+    "https://www.topcv.vn/tim-viec-lam-business-analyst",
+    "https://www.topcv.vn/tim-viec-lam-data",
 ]
 
 DA_KEYWORDS = [
