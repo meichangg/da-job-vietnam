@@ -2,7 +2,7 @@ name: Weekly DA Job Market Crawl
 
 on:
   schedule:
-    - cron: '0 1 * * 1'   # Thứ Hai 8h sáng GMT+7 (1h UTC)
+    - cron: '0 1 */2 * *'  # Mỗi 2 ngày 1 lần lúc 8h sáng GMT+7 (1h UTC)
   workflow_dispatch:        # Cho phép chạy tay
 
 jobs:
