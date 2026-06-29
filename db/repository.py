@@ -21,7 +21,9 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
-def get_or_create_source(session: Session, name: str, base_url: str) -> Source:
+def get_or_create_source(session, name: str, base_url: str):
+    if hasattr(session, "get_or_create_source"):
+        return session.get_or_create_source(name, base_url)
     source = session.scalar(select(Source).where(Source.name == name))
     if not source:
         source = Source(name=name, base_url=base_url)
@@ -30,7 +32,9 @@ def get_or_create_source(session: Session, name: str, base_url: str) -> Source:
     return source
 
 
-def get_or_create_company(session: Session, name: str) -> Company:
+def get_or_create_company(session, name: str):
+    if hasattr(session, "get_or_create_company"):
+        return session.get_or_create_company(name)
     name = name[:250]
     slug = _slug(name)[:250]
     company = session.scalar(select(Company).where(Company.name_slug == slug))
@@ -41,7 +45,9 @@ def get_or_create_company(session: Session, name: str) -> Company:
     return company
 
 
-def get_or_create_skill(session: Session, name: str) -> Skill:
+def get_or_create_skill(session, name: str):
+    if hasattr(session, "get_or_create_skill"):
+        return session.get_or_create_skill(name)
     skill = session.scalar(select(Skill).where(Skill.name == name))
     if not skill:
         skill = Skill(name=name)
@@ -50,12 +56,9 @@ def get_or_create_skill(session: Session, name: str) -> Skill:
     return skill
 
 
-def upsert_job(session: Session, data: dict) -> tuple[Job, bool]:
-    """
-    Returns (job, is_new).
-    - Nếu job chưa tồn tại → INSERT
-    - Nếu đã tồn tại → cập nhật last_seen_at, is_active=True
-    """
+def upsert_job(session, data: dict) -> tuple:
+    if hasattr(session, "upsert_job"):
+        return session.upsert_job(data)
     job = session.scalar(
         select(Job).where(
             Job.external_id == data["external_id"],
@@ -95,7 +98,9 @@ def upsert_job(session: Session, data: dict) -> tuple[Job, bool]:
     return job, True
 
 
-def attach_skills(session: Session, job: Job, skill_names: list[str]):
+def attach_skills(session, job, skill_names: list[str]):
+    if hasattr(session, "attach_skills"):
+        return session.attach_skills(job, skill_names)
     for name in skill_names:
         skill = get_or_create_skill(session, name)
         exists = session.scalar(
@@ -108,8 +113,9 @@ def attach_skills(session: Session, job: Job, skill_names: list[str]):
             session.add(JobSkill(job_id=job.id, skill_id=skill.id))
 
 
-def mark_closed_jobs(session: Session, source_id: int, seen_external_ids: set[str]):
-    """Jobs không còn xuất hiện trong lần crawl này → đánh dấu closed."""
+def mark_closed_jobs(session, source_id: int, seen_external_ids: set):
+    if hasattr(session, "mark_closed_jobs"):
+        return session.mark_closed_jobs(source_id, seen_external_ids)
     active_jobs = session.scalars(
         select(Job).where(Job.source_id == source_id, Job.is_active == True)
     ).all()
@@ -125,7 +131,9 @@ def mark_closed_jobs(session: Session, source_id: int, seen_external_ids: set[st
     return closed
 
 
-def start_crawl_run(session: Session, source_id: int, triggered_by: str = "scheduler") -> CrawlRun:
+def start_crawl_run(session, source_id: int, triggered_by: str = "scheduler"):
+    if hasattr(session, "start_crawl_run"):
+        return session.start_crawl_run(source_id, triggered_by)
     run = CrawlRun(source_id=source_id, triggered_by=triggered_by)
     session.add(run)
     session.flush()
@@ -133,14 +141,16 @@ def start_crawl_run(session: Session, source_id: int, triggered_by: str = "sched
 
 
 def finish_crawl_run(
-    session: Session,
-    run: CrawlRun,
+    session,
+    run,
     status: str,
     jobs_crawled: int = 0,
     jobs_new: int = 0,
     jobs_updated: int = 0,
     error_message: Optional[str] = None,
 ):
+    if hasattr(session, "finish_crawl_run"):
+        return session.finish_crawl_run(run, status, jobs_crawled, jobs_new, jobs_updated, error_message)
     run.finished_at   = datetime.utcnow()
     run.status        = status
     run.jobs_crawled  = jobs_crawled

@@ -19,18 +19,32 @@ from sqlalchemy import select, func
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-MAX_PAGES    = int(os.getenv("MAX_PAGES_PER_SOURCE", "5"))
-DELAY        = float(os.getenv("CRAWL_DELAY_SECONDS", "2"))
+DATABASE_URL  = os.getenv("DATABASE_URL", "")
+SUPABASE_URL  = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY  = os.getenv("SUPABASE_KEY", "")
+MAX_PAGES     = int(os.getenv("MAX_PAGES_PER_SOURCE", "5"))
+DELAY         = float(os.getenv("CRAWL_DELAY_SECONDS", "2"))
+
+
+def _make_session():
+    """Trả về SupabaseRepo (cloud) hoặc SQLAlchemy Session (local)."""
+    if SUPABASE_URL and SUPABASE_KEY:
+        from db.supabase_repo import SupabaseRepo
+        logger.info("Using Supabase REST API for database")
+        return SupabaseRepo(SUPABASE_URL, SUPABASE_KEY)
+    if DATABASE_URL:
+        logger.info("Using direct PostgreSQL connection")
+        engine = get_engine(DATABASE_URL)
+        init_db(engine)
+        return Session(engine)
+    logger.error("No database config: set SUPABASE_URL+SUPABASE_KEY or DATABASE_URL")
+    sys.exit(1)
 
 
 def run_crawlers(source_filter: str | None = None) -> dict:
     from crawlers.ybox         import YBoxCrawler
     from crawlers.vietnamworks import VietnamWorksCrawler
     from crawlers.topcv        import TopCVCrawler
-
-    engine = get_engine(DATABASE_URL)
-    init_db(engine)
 
     crawlers = {
         "ybox":         YBoxCrawler,
@@ -44,8 +58,9 @@ def run_crawlers(source_filter: str | None = None) -> dict:
             logger.error(f"Unknown source: {source_filter}")
             sys.exit(1)
 
+    session = _make_session()
     summary = {}
-    with Session(engine) as session:
+    try:
         for name, CrawlerClass in crawlers.items():
             try:
                 crawler = CrawlerClass(session, max_pages=MAX_PAGES, delay=DELAY)
@@ -56,15 +71,21 @@ def run_crawlers(source_filter: str | None = None) -> dict:
                 summary[name] = {"error": str(e)}
 
         build_weekly_snapshot(session)
+    finally:
+        if hasattr(session, "close"):
+            session.close()
 
     return summary
 
 
-def build_weekly_snapshot(session: Session):
-    """
-    Tạo/cập nhật weekly_snapshots cho tuần hiện tại.
-    Gọi sau mỗi lần crawl.
-    """
+def build_weekly_snapshot(session):
+    if hasattr(session, "build_weekly_snapshot"):
+        today      = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end   = week_start + timedelta(days=6)
+        session.build_weekly_snapshot(week_start, week_end)
+        return
+
     today      = date.today()
     week_start = today - timedelta(days=today.weekday())  # Thứ Hai
     week_end   = week_start + timedelta(days=6)           # Chủ Nhật
