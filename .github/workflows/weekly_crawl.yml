@@ -26,9 +26,7 @@ jobs:
 
       - name: Run all crawlers
         env:
-          DATABASE_URL:            ${{ secrets.DATABASE_URL }}
-          LINKEDIN_EMAIL:          ${{ secrets.LINKEDIN_EMAIL }}
-          LINKEDIN_PASSWORD:       ${{ secrets.LINKEDIN_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python main.py
 
       - name: Upload logs on failure
