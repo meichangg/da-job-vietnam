@@ -158,8 +158,9 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Test crawlers without saving to DB")
     args = parser.parse_args()
 
-    if not DATABASE_URL and not args.dry_run:
-        logger.error("DATABASE_URL not set. Copy .env.example to .env and fill in credentials.")
+    has_db = DATABASE_URL or (SUPABASE_URL and SUPABASE_KEY)
+    if not has_db and not args.dry_run:
+        logger.error("No database config: set SUPABASE_URL+SUPABASE_KEY or DATABASE_URL")
         sys.exit(1)
 
     if args.dry_run:
