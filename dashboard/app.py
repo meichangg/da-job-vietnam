@@ -123,12 +123,10 @@ total_jobs  = len(df_jobs)
 active_jobs = int(df_jobs["is_active"].sum()) if "is_active" in df_jobs.columns else 0
 closed_jobs = total_jobs - active_jobs
 
-today = pd.Timestamp.utcnow().normalize()
+today = pd.Timestamp.now(tz="UTC").normalize()
 if "closed_at" in df_jobs.columns:
-    closed_today = int(
-        df_jobs["closed_at"].notna() &
-        (df_jobs["closed_at"] >= today)
-    )
+    closed_at = pd.to_datetime(df_jobs["closed_at"], utc=True, errors="coerce")
+    closed_today = int((closed_at >= today).sum())
 else:
     closed_today = 0
 
