@@ -25,6 +25,10 @@ class VietnamWorksCrawler(BaseCrawler):
         "bi analyst",
         "data analytics",
         "business intelligence",
+        "data engineer",
+        "analytics engineer",
+        "phân tích dữ liệu",
+        "phân tích kinh doanh",
     ]
 
     def __init__(self, session: Session, max_pages: int = 5, delay: float = 1.5):
