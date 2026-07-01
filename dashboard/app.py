@@ -122,13 +122,21 @@ st.caption("Dữ liệu crawl từ TopCV · VietnamWorks · YBox")
 total_jobs  = len(df_jobs)
 active_jobs = int(df_jobs["is_active"].sum()) if "is_active" in df_jobs.columns else 0
 closed_jobs = total_jobs - active_jobs
-sources     = df_jobs["source"].nunique() if "source" in df_jobs.columns else 0
+
+today = pd.Timestamp.utcnow().normalize()
+if "closed_at" in df_jobs.columns:
+    closed_today = int(
+        df_jobs["closed_at"].notna() &
+        (df_jobs["closed_at"] >= today)
+    )
+else:
+    closed_today = 0
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Tổng số jobs", total_jobs)
 c2.metric("Đang tuyển dụng", active_jobs)
 c3.metric("Đã đóng", closed_jobs)
-c4.metric("Nguồn dữ liệu", sources)
+c4.metric("Đóng hôm nay", closed_today)
 
 st.divider()
 
