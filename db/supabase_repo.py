@@ -118,6 +118,7 @@ class SupabaseRepo:
             self._patch("jobs", [("id", f"eq.{job_row['id']}")], {
                 "last_seen_at": now,
                 "is_active":    True,
+                "url":          data.get("url") or job_row.get("url"),
                 "salary_raw":   data.get("salary_raw") or job_row.get("salary_raw"),
                 "salary_min":   data.get("salary_min") or job_row.get("salary_min"),
                 "salary_max":   data.get("salary_max") or job_row.get("salary_max"),

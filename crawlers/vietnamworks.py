@@ -98,7 +98,10 @@ class VietnamWorksCrawler(BaseCrawler):
             title    = (job.get("jobTitle") or "").strip()
             company  = (job.get("companyName") or "Unknown").strip()
             job_url  = job.get("jobUrl") or f"job/{job_id}"
-            url      = self.JOB_URL.format(job_url=job_url.lstrip("/"))
+            if job_url.startswith("http://") or job_url.startswith("https://"):
+                url = job_url
+            else:
+                url = self.JOB_URL.format(job_url=job_url.lstrip("/"))
 
             # Lương
             sal_raw  = job.get("prettySalary") or "Thương lượng"
