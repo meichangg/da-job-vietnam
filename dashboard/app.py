@@ -50,7 +50,7 @@ def supabase_get(table: str, select: str = "*", extra_params: dict = None) -> li
 def load_jobs() -> pd.DataFrame:
     rows = supabase_get(
         "jobs",
-        select="id,title,location,level,salary_min,salary_max,salary_raw,is_active,first_seen_at,last_seen_at,closed_at,companies(name),sources(name)"
+        select="id,title,url,location,level,salary_min,salary_max,salary_raw,is_active,first_seen_at,last_seen_at,closed_at,companies(name),sources(name)"
     )
     df = pd.json_normalize(rows)
     df = df.rename(columns={"companies.name": "company", "sources.name": "source"})
@@ -314,14 +314,23 @@ if loc_filter:
 if lvl_filter:
     filtered = filtered[filtered["level"].isin(lvl_filter)]
 
-show_cols = [c for c in ["title", "company", "source", "location", "level", "salary_raw", "first_seen_at"] if c in filtered.columns]
+show_cols = [c for c in ["title", "company", "source", "location", "level", "salary_raw", "first_seen_at", "url"] if c in filtered.columns]
 show_df = filtered[show_cols].rename(columns={
     "title": "Tên Job", "company": "Công ty", "source": "Nguồn",
     "location": "Địa điểm", "level": "Cấp bậc",
     "salary_raw": "Lương", "first_seen_at": "Ngày thấy lần đầu",
+    "url": "Link",
 })
 if "Ngày thấy lần đầu" in show_df.columns:
     show_df["Ngày thấy lần đầu"] = pd.to_datetime(show_df["Ngày thấy lần đầu"]).dt.strftime("%Y-%m-%d")
 
-st.dataframe(show_df, use_container_width=True, height=400)
+st.dataframe(
+    show_df,
+    use_container_width=True,
+    height=400,
+    hide_index=True,
+    column_config={
+        "Link": st.column_config.LinkColumn("Link", display_text="Xem job ↗"),
+    },
+)
 st.caption(f"Hiển thị {len(filtered)} / {len(active_df)} jobs đang tuyển")
