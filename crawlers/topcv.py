@@ -4,6 +4,7 @@ Job listings được render bởi JS nên cần đợi selector xuất hiện s
 """
 import re
 import time
+import random
 from loguru import logger
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from bs4 import BeautifulSoup
@@ -11,16 +12,28 @@ from bs4 import BeautifulSoup
 from crawlers.base_crawler import BaseCrawler, JobItem
 from utils.normalizer import is_da_job, extract_skills
 
-# Tìm kiếm DA jobs theo keyword — dùng URL search có keyword sẵn
-SEARCH_QUERIES = [
-    "https://www.topcv.vn/viec-lam-it?keyword=data+analyst",
-    "https://www.topcv.vn/viec-lam-it?keyword=business+analyst",
-    "https://www.topcv.vn/viec-lam-it?keyword=data+analytics",
-    "https://www.topcv.vn/viec-lam-it?keyword=bi+analyst",
-    "https://www.topcv.vn/tim-viec-lam-data-analyst",
-    "https://www.topcv.vn/tim-viec-lam-business-analyst",
-    "https://www.topcv.vn/tim-viec-lam-data",
+# TopCV đã đổi URL search — "?keyword=" và các alias "tim-viec-lam-x" cũ không còn
+# lọc theo từ khóa nữa (redirect về trang category chung hoặc 404/0 kết quả).
+# URL đúng hiện tại lấy được bằng cách gõ vào ô search trên trang chủ và submit:
+#   https://www.topcv.vn/tim-viec-lam-{slug}?type_keyword=1&sba=1
+SEARCH_TERMS = [
+    "data analyst",
+    "business analyst",
+    "data analytics",
+    "bi analyst",
+    "business intelligence",
+    "phân tích dữ liệu",
+    "phân tích kinh doanh",
+    "data engineer",
 ]
+
+
+def _search_url(term: str) -> str:
+    slug = term.strip().lower().replace(" ", "-")
+    return f"https://www.topcv.vn/tim-viec-lam-{slug}?type_keyword=1&sba=1"
+
+
+SEARCH_QUERIES = [_search_url(t) for t in SEARCH_TERMS]
 
 DA_KEYWORDS = [
     "data analyst", "business analyst", "bi analyst", "data analytics",
@@ -132,6 +145,39 @@ def _scrape_url(page, url: str) -> list[dict]:
         return []
 
 
+def _new_context(browser):
+    """Context mới cho mỗi query — tránh Cloudflare cộng dồn 'điểm nghi ngờ' theo
+    session khi nhiều lượt search bắn liên tiếp trong cùng cookie/context."""
+    context = browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        locale="vi-VN",
+        viewport={"width": 1280, "height": 900},
+        extra_http_headers={
+            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    )
+    context.add_init_script(
+        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+    )
+    return context
+
+
+def _human_pause(page):
+    """Di chuột + cuộn nhẹ trước khi đọc nội dung, giả lập hành vi người dùng thật."""
+    try:
+        page.mouse.move(random.randint(100, 800), random.randint(100, 600))
+        page.wait_for_timeout(random.randint(300, 800))
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight / 3)")
+        page.wait_for_timeout(random.randint(500, 1200))
+    except Exception:
+        pass
+
+
 class TopCVCrawler(BaseCrawler):
     SOURCE_NAME = "topcv"
     SOURCE_URL  = "https://www.topcv.vn"
@@ -140,39 +186,33 @@ class TopCVCrawler(BaseCrawler):
         all_items: dict[str, JobItem] = {}
 
         with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/125.0.0.0 Safari/537.36"
-                ),
-                locale="vi-VN",
-                viewport={"width": 1280, "height": 900},
-                extra_http_headers={
-                    "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                },
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
             )
-            page = context.new_page()
 
-            # Warm up: visit homepage để lấy cookies
-            try:
-                page.goto("https://www.topcv.vn", wait_until="domcontentloaded", timeout=20000)
-                page.wait_for_timeout(2000)
-                logger.info("[TopCV] Warmup done")
-            except Exception as e:
-                logger.warning(f"[TopCV] Warmup failed: {e}")
+            for i, url in enumerate(SEARCH_QUERIES):
+                context = _new_context(browser)
+                page = context.new_page()
+                try:
+                    # Ghé trang chủ trước mỗi search, giống hành vi người dùng thật
+                    page.goto("https://www.topcv.vn", wait_until="domcontentloaded", timeout=20000)
+                    _human_pause(page)
 
-            for url in SEARCH_QUERIES:
-                raw_jobs = _scrape_url(page, url)
-                for job in raw_jobs:
-                    if not _is_da(job["title"]):
-                        continue
-                    item = self._parse(job)
-                    if item:
-                        all_items[item.external_id] = item
-                time.sleep(self.delay)
+                    raw_jobs = _scrape_url(page, url)
+                    for job in raw_jobs:
+                        if not _is_da(job["title"]):
+                            continue
+                        item = self._parse(job)
+                        if item:
+                            all_items[item.external_id] = item
+                except Exception as e:
+                    logger.warning(f"[TopCV] Query failed: {url} | {e}")
+                finally:
+                    context.close()
+
+                if i < len(SEARCH_QUERIES) - 1:
+                    time.sleep(self.delay + random.uniform(3, 6))
 
             browser.close()
 
