@@ -108,6 +108,9 @@ class LinkedInCrawler(BaseCrawler):
             link_el = card.select_one("a.base-card__full-link, a")
             href    = link_el.get("href", "") if link_el else ""
             url     = href.split("?")[0]
+            # LinkedIn trả về subdomain theo quốc gia (vn.linkedin.com, de.linkedin.com...)
+            # nhưng các subdomain này hay bị treo/đóng kết nối — www.linkedin.com luôn ổn định.
+            url = re.sub(r"^https://[a-z]{2,3}\.linkedin\.com/", "https://www.linkedin.com/", url)
 
             job_id = id_m.group(1) if id_m else ""
             if not job_id:
