@@ -28,8 +28,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
-          LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
         run: python main.py
 
       - name: Upload logs on failure
