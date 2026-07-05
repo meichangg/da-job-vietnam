@@ -113,7 +113,7 @@ df_runs   = load_crawl_runs()
 # ─────────────────────────────────────────────────────────
 
 st.title("📊 Thị trường tuyển dụng Data Analyst - Việt Nam")
-st.caption("Dữ liệu crawl từ TopCV · VietnamWorks · YBox")
+st.caption("Dữ liệu crawl từ TopCV · VietnamWorks · YBox · LinkedIn")
 
 # ─────────────────────────────────────────────────────────
 # KPI cards
