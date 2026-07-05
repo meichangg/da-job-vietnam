@@ -74,7 +74,17 @@ class BaseCrawler(ABC):
                 else:
                     jobs_updated += 1
 
-            closed = repo.mark_closed_jobs(self.session, self.source.id, seen_ids)
+            if items:
+                closed = repo.mark_closed_jobs(self.session, self.source.id, seen_ids)
+            else:
+                # 0 job crawl được nhiều khả năng là crawl bị chặn/lỗi (vd Cloudflare),
+                # không phải thị trường hết job — bỏ qua bước đóng để tránh đóng nhầm
+                # toàn bộ job đang active của nguồn này.
+                closed = []
+                logger.warning(
+                    f"[{self.SOURCE_NAME}] 0 items fetched — skipping mark_closed_jobs "
+                    "(likely a blocked/failed crawl, not an empty market)"
+                )
             self.session.commit()
 
             repo.finish_crawl_run(
