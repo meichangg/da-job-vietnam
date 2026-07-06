@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from db import repository as repo
 from utils.normalizer import (
-    normalize_title, normalize_location,
+    normalize_title, normalize_location, normalize_skill_name,
     extract_level, extract_skills, parse_salary, is_da_job,
 )
 
@@ -67,7 +67,8 @@ class BaseCrawler(ABC):
                 job, is_new = repo.upsert_job(self.session, job_data)
 
                 if item.skills:
-                    repo.attach_skills(self.session, job, item.skills)
+                    skills = [normalize_skill_name(s) for s in item.skills]
+                    repo.attach_skills(self.session, job, skills)
 
                 if is_new:
                     jobs_new += 1

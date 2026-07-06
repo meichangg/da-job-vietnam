@@ -72,6 +72,44 @@ def extract_skills(description: str) -> list[str]:
     return found
 
 
+# Một số nguồn (vd VietnamWorks) trả sẵn tag kỹ năng dạng free-text thay vì
+# qua extract_skills(), nên bị lệch chữ hoa/thường giữa các lần khác nhau
+# (vd "PowerBI" vs "Power BI", "Sql" vs "SQL") -> tách thành 2 skill khác nhau
+# trong DB. normalize_skill_name() gộp các biến thể đã biết về 1 tên chuẩn.
+SKILL_ALIASES = {
+    "sql":                    "SQL",
+    "mysql":                  "MySQL",
+    "postgresql":             "PostgreSQL",
+    "powerbi":                "Power BI",
+    "power bi":               "Power BI",
+    "python":                 "Python",
+    "pyspark":                "PySpark",
+    "tableau":                "Tableau",
+    "excel":                  "Excel",
+    "business intelligence":  "Business Intelligence",
+    "business analysis":      "Business Analysis",
+    "data analysis":          "Data Analysis",
+    "data analytics":         "Data Analytics",
+    "analytical skills":      "Analytical Skills",
+    "stakeholder management": "Stakeholder Management",
+    "english":                "English",
+    "oracle":                 "Oracle",
+}
+
+
+def normalize_skill_name(name: str) -> str:
+    if not name:
+        return name
+    cleaned = re.sub(r"\s+", " ", name.strip())
+    key = cleaned.lower()
+    if key in SKILL_ALIASES:
+        return SKILL_ALIASES[key]
+    # Tag toàn chữ hoa kiểu 'PYTHON' -> chuyển Title Case cho dễ đọc/nhất quán
+    if cleaned.isupper() and len(cleaned) > 4:
+        return cleaned.title()
+    return cleaned
+
+
 def parse_salary(salary_raw: str) -> tuple[Optional[int], Optional[int]]:
     """
     Parse các dạng lương:
@@ -110,23 +148,33 @@ def parse_salary(salary_raw: str) -> tuple[Optional[int], Optional[int]]:
         return low, high
 
 
+LOCATION_KEYWORDS = [
+    (["hà nội", "ha noi", "hanoi"],                                   "Hà Nội"),
+    (["hồ chí minh", "ho chi minh", "hcm", "sài gòn", "saigon", "củ chi"], "TP.HCM"),
+    (["đà nẵng", "da nang", "danang"],                                 "Đà Nẵng"),
+    (["cần thơ", "can tho"],                                          "Cần Thơ"),
+    (["remote"],                                                       "Remote"),
+]
+
+
 def normalize_location(location: str) -> str:
+    """Gộp các biến thể ghi khác nhau của cùng 1 địa điểm (vd 'Ho Chi Minh City,
+    Vietnam', 'Ho Chi Minh City Metropolitan Area', 'Hồ Chí Minh (mới)' đều
+    thành 'TP.HCM') bằng so khớp chứa từ khóa thay vì so khớp tuyệt đối."""
     if not location:
         return "Unknown"
     loc = location.strip()
-    mapping = {
-        "hà nội": "Hà Nội",
-        "ha noi": "Hà Nội",
-        "hanoi": "Hà Nội",
-        "hồ chí minh": "TP.HCM",
-        "ho chi minh": "TP.HCM",
-        "hcm": "TP.HCM",
-        "tp.hcm": "TP.HCM",
-        "tp hcm": "TP.HCM",
-        "saigon": "TP.HCM",
-        "đà nẵng": "Đà Nẵng",
-        "da nang": "Đà Nẵng",
-        "remote": "Remote",
-        "toàn quốc": "Toàn quốc",
-    }
-    return mapping.get(loc.lower(), loc)
+    loc_lower = loc.lower()
+
+    # Tin đăng nhiều địa điểm / remote cùng lúc — gộp vào "Toàn quốc"
+    if "online" in loc_lower or loc.count("/") >= 2:
+        return "Toàn quốc"
+
+    for keywords, normalized in LOCATION_KEYWORDS:
+        if any(k in loc_lower for k in keywords):
+            return normalized
+
+    if loc_lower in ("vietnam", "việt nam", "toàn quốc"):
+        return "Toàn quốc"
+
+    return loc
