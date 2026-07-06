@@ -106,8 +106,9 @@ def _parse_jobs(html: str) -> list[dict]:
     return jobs
 
 
-def _scrape_url(page, url: str) -> list[dict]:
-    """Navigate đến URL và parse jobs. Dùng lại page đã có để giữ cookies."""
+def _scrape_url(page, url: str) -> tuple[list[dict], bool]:
+    """Navigate đến URL và parse jobs. Trả về (jobs, blocked) — blocked=True khi
+    nghi bị Cloudflare chặn hoặc lỗi mạng, để fetch_jobs() quyết định có retry không."""
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
@@ -124,11 +125,12 @@ def _scrape_url(page, url: str) -> list[dict]:
         if not loaded:
             # Không tìm thấy selector, kiểm tra xem có bị block không
             title = page.title()
-            if any(x in title.lower() for x in ["cloudflare", "attention", "just a moment"]):
+            blocked = any(x in title.lower() for x in ["cloudflare", "attention", "just a moment"])
+            if blocked:
                 logger.warning(f"[TopCV] Cloudflare block: {title} | {url}")
             else:
                 logger.warning(f"[TopCV] No job cards found on: {url} (title: {title[:60]})")
-            return []
+            return [], blocked
 
         # Cuộn trang để trigger lazy loading
         page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
@@ -138,11 +140,11 @@ def _scrape_url(page, url: str) -> list[dict]:
 
         jobs = _parse_jobs(page.content())
         logger.info(f"[TopCV] {url} -> {len(jobs)} raw cards")
-        return jobs
+        return jobs, False
 
     except Exception as e:
         logger.warning(f"[TopCV] Error on {url}: {e}")
-        return []
+        return [], True
 
 
 def _new_context(browser):
@@ -178,6 +180,9 @@ def _human_pause(page):
         pass
 
 
+MAX_QUERY_ATTEMPTS = 3  # 1 lần thử ban đầu + tối đa 2 lần retry khi bị chặn
+
+
 class TopCVCrawler(BaseCrawler):
     SOURCE_NAME = "topcv"
     SOURCE_URL  = "https://www.topcv.vn"
@@ -192,24 +197,41 @@ class TopCVCrawler(BaseCrawler):
             )
 
             for i, url in enumerate(SEARCH_QUERIES):
-                context = _new_context(browser)
-                page = context.new_page()
-                try:
-                    # Ghé trang chủ trước mỗi search, giống hành vi người dùng thật
-                    page.goto("https://www.topcv.vn", wait_until="domcontentloaded", timeout=20000)
-                    _human_pause(page)
+                raw_jobs: list[dict] = []
 
-                    raw_jobs = _scrape_url(page, url)
-                    for job in raw_jobs:
-                        if not _is_da(job["title"]):
-                            continue
-                        item = self._parse(job)
-                        if item:
-                            all_items[item.external_id] = item
-                except Exception as e:
-                    logger.warning(f"[TopCV] Query failed: {url} | {e}")
-                finally:
-                    context.close()
+                for attempt in range(1, MAX_QUERY_ATTEMPTS + 1):
+                    context = _new_context(browser)
+                    page = context.new_page()
+                    try:
+                        # Ghé trang chủ trước mỗi search, giống hành vi người dùng thật
+                        page.goto("https://www.topcv.vn", wait_until="domcontentloaded", timeout=20000)
+                        _human_pause(page)
+                        raw_jobs, blocked = _scrape_url(page, url)
+                    except Exception as e:
+                        logger.warning(f"[TopCV] Query failed: {url} | {e}")
+                        raw_jobs, blocked = [], True
+                    finally:
+                        context.close()
+
+                    if not blocked:
+                        break
+
+                    if attempt < MAX_QUERY_ATTEMPTS:
+                        wait_s = self.delay + random.uniform(4, 8) * attempt
+                        logger.info(
+                            f"[TopCV] Blocked (attempt {attempt}/{MAX_QUERY_ATTEMPTS}), "
+                            f"retry '{url}' after {wait_s:.0f}s"
+                        )
+                        time.sleep(wait_s)
+                    else:
+                        logger.warning(f"[TopCV] Still blocked after {MAX_QUERY_ATTEMPTS} attempts: {url}")
+
+                for job in raw_jobs:
+                    if not _is_da(job["title"]):
+                        continue
+                    item = self._parse(job)
+                    if item:
+                        all_items[item.external_id] = item
 
                 if i < len(SEARCH_QUERIES) - 1:
                     time.sleep(self.delay + random.uniform(3, 6))
