@@ -248,7 +248,7 @@ st.divider()
 col5, col6 = st.columns(2)
 
 with col5:
-    st.subheader("Phân bổ mức lương (triệu VND/tháng)")
+    st.subheader("Phân bổ mức lương theo cấp bậc (triệu VND/tháng)")
     if "salary_min" in df_jobs.columns:
         sal_df = df_jobs[(df_jobs["salary_min"].notna()) & (df_jobs["salary_min"] > 0)].copy()
         if len(sal_df):
@@ -256,10 +256,18 @@ with col5:
                 (sal_df["salary_min"] + sal_df["salary_max"].fillna(sal_df["salary_min"])) / 2 / 1_000_000
             )
             sal_df = sal_df[sal_df["salary_avg_m"] < 200]
-            fig5 = px.histogram(sal_df, x="salary_avg_m", nbins=20,
-                                color_discrete_sequence=["#636EFA"],
-                                labels={"salary_avg_m": "Lương trung bình (triệu/tháng)"})
-            fig5.update_layout(yaxis_title="Số jobs")
+            sal_df["Cấp bậc"] = sal_df["level"].fillna("Không rõ") if "level" in sal_df.columns else "Không rõ"
+
+            hover_cols = [c for c in ["title", "company"] if c in sal_df.columns]
+            fig5 = px.strip(
+                sal_df, x="Cấp bậc", y="salary_avg_m",
+                color="source" if "source" in sal_df.columns else None,
+                hover_data=hover_cols,
+                labels={"salary_avg_m": "Lương trung bình (triệu/tháng)"},
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+            fig5.update_traces(jitter=0.4, marker=dict(size=9, opacity=0.75))
+            fig5.update_layout(yaxis_title="Lương trung bình (triệu/tháng)", legend_title="Nguồn")
             st.plotly_chart(fig5, use_container_width=True)
         else:
             st.info("Chưa có đủ dữ liệu lương")
