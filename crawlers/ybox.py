@@ -9,7 +9,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from crawlers.base_crawler import BaseCrawler, JobItem
-from utils.normalizer import extract_skills
+from utils.normalizer import extract_skills, extract_salary_from_title
 
 COMMUNITY_TUYEN_DUNG = "5a4542f355ae5009afa5a3ec"
 
@@ -119,7 +119,8 @@ class YBoxCrawler(BaseCrawler):
             description = (post.get("summary") or "") + "\n" + (post.get("content") or "")
             skills      = extract_skills(description)
 
-            location = self._extract_location(title)
+            location   = self._extract_location(title)
+            salary_raw = extract_salary_from_title(title) or "Thương lượng"
 
             if not post_id or not title:
                 return None
@@ -134,6 +135,7 @@ class YBoxCrawler(BaseCrawler):
                 description  = description.strip(),
                 deadline     = deadline,
                 skills       = skills,
+                salary_raw   = salary_raw,
             )
         except Exception as e:
             logger.debug(f"[YBox] Parse error: {e}")

@@ -127,8 +127,30 @@ def parse_salary(salary_raw: str) -> tuple[Optional[int], Optional[int]]:
 
     USD_RATE = 25_000
 
+    def _to_float(n: str) -> float:
+        """Nhận cả 2 kiểu viết số: dùng dấu phẩy hoặc dấu chấm làm phân cách
+        nghìn ('15,000,000' / '3.000.000'), và dấu phẩy hoặc chấm làm thập
+        phân ('8,5 triệu' / '8.5 triệu')."""
+        has_comma, has_dot = "," in n, "." in n
+
+        if has_comma and has_dot:
+            if n.rfind(",") > n.rfind("."):
+                n = n.replace(".", "").replace(",", ".")  # kiểu Âu: 1.234,56
+            else:
+                n = n.replace(",", "")                     # kiểu Mỹ: 1,234.56
+            return float(n)
+
+        for sep in (",", "."):
+            if sep in n:
+                parts = n.split(sep)
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    return float(f"{parts[0]}.{parts[1]}")  # thập phân
+                return float(n.replace(sep, ""))            # phân cách nghìn
+
+        return float(n)
+
     nums = re.findall(r"[\d,\.]+", raw)
-    nums = [float(n.replace(",", "")) for n in nums if n]
+    nums = [_to_float(n) for n in nums if n]
 
     if not nums:
         return None, None
@@ -146,6 +168,27 @@ def parse_salary(salary_raw: str) -> tuple[Optional[int], Optional[int]]:
         low = int(min(nums[0], nums[1]) * multiplier)
         high = int(max(nums[0], nums[1]) * multiplier)
         return low, high
+
+
+SALARY_TITLE_PATTERN = re.compile(
+    # Dừng ở dấu phẩy là ranh giới cụm từ (theo sau bởi khoảng trắng), nhưng
+    # không dừng ở dấu phẩy nằm trong số (vd "8,5 triệu" hoặc "15,000,000")
+    r"(?:mức\s*lương|thu\s*nhập|trợ\s*cấp(?:\s*thực\s*tập)?)\s*:?\s*((?:[^,\)]|,(?=\d)){2,40})",
+    re.IGNORECASE,
+)
+
+
+def extract_salary_from_title(title: str) -> Optional[str]:
+    """Một số nguồn (vd YBox) hay ghi lương ngay trong tiêu đề dạng
+    '... (Mức Lương 9-13 Triệu/Tháng)' thay vì có trường lương riêng.
+    Trả về đoạn text lương để parse_salary() xử lý tiếp, hoặc None nếu
+    tiêu đề không đề cập lương."""
+    if not title:
+        return None
+    m = SALARY_TITLE_PATTERN.search(title)
+    if not m:
+        return None
+    return m.group(1).strip(" :")
 
 
 LOCATION_KEYWORDS = [
