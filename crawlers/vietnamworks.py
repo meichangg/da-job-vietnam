@@ -103,11 +103,14 @@ class VietnamWorksCrawler(BaseCrawler):
             else:
                 url = self.JOB_URL.format(job_url=job_url.lstrip("/"))
 
-            # Lương
+            # Lương — API trả salaryMin/Max theo đúng đơn vị của salaryCurrency
+            # (vd 700 USD, không phải 700 VND) nên phải tự quy đổi về VND.
+            USD_TO_VND = 25_000
             sal_raw  = job.get("prettySalary") or "Thương lượng"
-            sal_min  = int(job.get("salaryMin") or 0) or None
-            sal_max  = int(job.get("salaryMax") or 0) or None
-            currency = job.get("salaryCurrency") or "VND"
+            currency = (job.get("salaryCurrency") or "VND").upper()
+            rate     = USD_TO_VND if currency == "USD" else 1
+            sal_min  = int(job.get("salaryMin") or 0) * rate or None
+            sal_max  = int(job.get("salaryMax") or 0) * rate or None
 
             # Địa điểm
             locs     = job.get("workingLocations") or []
