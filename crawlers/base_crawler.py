@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from db import repository as repo
 from utils.normalizer import (
     normalize_title, normalize_location, normalize_skill_name,
-    extract_level, extract_skills, parse_salary, is_da_job,
+    extract_level, extract_skills, parse_salary, classify_job_category,
 )
 
 
@@ -59,11 +59,13 @@ class BaseCrawler(ABC):
             logger.info(f"[{self.SOURCE_NAME}] Fetched {len(items)} raw items")
 
             for item in items:
-                if not is_da_job(item.title):
+                category = classify_job_category(item.title)
+                if not category:
                     continue
 
                 seen_ids.add(item.external_id)
                 job_data = self._to_db_dict(item)
+                job_data["category"] = category
                 job, is_new = repo.upsert_job(self.session, job_data)
 
                 if item.skills:

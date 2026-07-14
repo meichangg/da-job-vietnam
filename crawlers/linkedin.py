@@ -31,6 +31,9 @@ class LinkedInCrawler(BaseCrawler):
         "bi analyst",
         "data analytics",
         "business intelligence",
+        "data scientist",
+        "machine learning engineer",
+        "ai engineer",
     ]
 
     def __init__(self, session: Session, max_pages: int = 5, delay: float = 2.0):

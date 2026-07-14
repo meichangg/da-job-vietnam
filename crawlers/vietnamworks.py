@@ -29,6 +29,9 @@ class VietnamWorksCrawler(BaseCrawler):
         "analytics engineer",
         "phân tích dữ liệu",
         "phân tích kinh doanh",
+        "data scientist",
+        "machine learning engineer",
+        "ai engineer",
     ]
 
     def __init__(self, session: Session, max_pages: int = 5, delay: float = 1.5):

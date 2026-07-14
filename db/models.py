@@ -69,6 +69,7 @@ class Job(Base):
     level            = Column(String(50))
     job_type         = Column(String(50))
     location         = Column(String(100))
+    category         = Column(String(10), default="DA")  # DA | DS | AI
 
     salary_min       = Column(Integer)
     salary_max       = Column(Integer)

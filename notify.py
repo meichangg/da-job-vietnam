@@ -46,41 +46,56 @@ def _supabase_get(table: str, select: str, extra_params: dict) -> list:
     return resp.json()
 
 
-def _postgres_get(today_str: str) -> tuple[int, list[dict]]:
+VALID_CATEGORIES = {"DA", "DS", "AI"}
+
+
+def _postgres_get(today_str: str, category: str | None = None) -> tuple[int, list[dict]]:
     import psycopg2
     import psycopg2.extras
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    cur.execute("SELECT count(*) AS c FROM jobs WHERE is_active = true")
+    if category:
+        cur.execute("SELECT count(*) AS c FROM jobs WHERE is_active = true AND category = %s", (category,))
+    else:
+        cur.execute("SELECT count(*) AS c FROM jobs WHERE is_active = true")
     active_count = cur.fetchone()["c"]
 
-    cur.execute(
-        """
+    query = """
         SELECT j.title, j.url, c.name AS company, s.name AS source
         FROM jobs j
         LEFT JOIN companies c ON c.id = j.company_id
         LEFT JOIN sources   s ON s.id = j.source_id
         WHERE j.is_active = true AND j.first_seen_at >= %s
-        """,
-        (today_str,),
-    )
+    """
+    params: list = [today_str]
+    if category:
+        query += " AND j.category = %s"
+        params.append(category)
+
+    cur.execute(query, params)
     new_jobs = [dict(row) for row in cur.fetchall()]
     cur.close()
     conn.close()
     return active_count, new_jobs
 
 
-def build_report() -> str:
+def build_report(category: str | None = None) -> str:
+    if category:
+        category = category.strip().upper()
+        if category not in VALID_CATEGORIES:
+            return f"Nhóm ngành '{category}' không hợp lệ. Chọn 1 trong: {', '.join(sorted(VALID_CATEGORIES))}"
+
     today_str = date.today().isoformat()
+    cat_filter = {"category": f"eq.{category}"} if category else {}
 
     if SUPABASE_URL and SUPABASE_KEY:
-        active_jobs = _supabase_get("jobs", "id", {"is_active": "eq.true"})
+        active_jobs = _supabase_get("jobs", "id", {"is_active": "eq.true", **cat_filter})
         raw_new = _supabase_get(
             "jobs",
             "title,url,first_seen_at,companies(name),sources(name)",
-            {"is_active": "eq.true", "first_seen_at": f"gte.{today_str}"},
+            {"is_active": "eq.true", "first_seen_at": f"gte.{today_str}", **cat_filter},
         )
         active_count = len(active_jobs)
         new_jobs = [
@@ -93,12 +108,13 @@ def build_report() -> str:
             for j in raw_new
         ]
     elif DATABASE_URL:
-        active_count, new_jobs = _postgres_get(today_str)
+        active_count, new_jobs = _postgres_get(today_str, category)
     else:
         raise RuntimeError("Chưa cấu hình SUPABASE_URL+SUPABASE_KEY hoặc DATABASE_URL trong .env")
 
+    label = f"({category})" if category else "(tất cả nhóm ngành)"
     lines = [
-        f"📊 Báo cáo thị trường DA Việt Nam — {today_str}",
+        f"📊 Báo cáo thị trường {label} — {today_str}",
         f"Tổng số job đang tuyển: {active_count}",
         f"Job mới thêm hôm nay: {len(new_jobs)}",
         "",
@@ -149,16 +165,18 @@ def send_email(subject: str, text: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Gửi báo cáo job hàng ngày qua Telegram/Email")
     parser.add_argument("--dry-run", action="store_true", help="Chỉ in ra nội dung, không gửi")
+    parser.add_argument("--category", type=str, default=None, help="Lọc theo nhóm ngành: DA | DS | AI")
     args = parser.parse_args()
 
-    text = build_report()
+    text = build_report(args.category)
 
     if args.dry_run:
         print(text)
         return
 
     send_telegram(text)
-    send_email(f"[DA Job Market] Báo cáo {date.today().isoformat()}", text)
+    label = f" ({args.category})" if args.category else ""
+    send_email(f"[DA Job Market] Báo cáo{label} {date.today().isoformat()}", text)
 
 
 if __name__ == "__main__":

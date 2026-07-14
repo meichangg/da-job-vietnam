@@ -37,7 +37,8 @@ API_BASE = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 HELP_TEXT = (
     "Các lệnh hỗ trợ:\n"
     "/crawl - kích hoạt crawl tất cả nguồn ngay (chạy nền, xem kết quả sau ~15-30 phút)\n"
-    "/report - xem báo cáo job hiện tại\n"
+    "/report - xem báo cáo job hiện tại (tất cả nhóm ngành)\n"
+    "/report DA | /report DS | /report AI - xem báo cáo riêng theo nhóm ngành\n"
     "/status - xem 5 lần crawl gần nhất\n"
     "/help - xem danh sách lệnh này"
 )
@@ -134,12 +135,14 @@ def build_status_text() -> str:
 
 
 def handle_command(chat_id: str, text: str) -> None:
-    command = text.strip().split()[0].lower()
+    parts   = text.strip().split()
+    command = parts[0].lower()
+    arg     = parts[1] if len(parts) > 1 else None
 
     if command == "/crawl":
         reply(chat_id, trigger_crawl_workflow())
     elif command == "/report":
-        reply(chat_id, notify.build_report())
+        reply(chat_id, notify.build_report(arg))
     elif command == "/status":
         reply(chat_id, build_status_text())
     elif command in ("/help", "/start"):

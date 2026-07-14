@@ -25,6 +25,9 @@ SEARCH_TERMS = [
     "phân tích dữ liệu",
     "phân tích kinh doanh",
     "data engineer",
+    "data scientist",
+    "machine learning engineer",
+    "ai engineer",
 ]
 
 

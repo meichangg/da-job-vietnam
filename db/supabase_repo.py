@@ -119,6 +119,7 @@ class SupabaseRepo:
                 "last_seen_at": now,
                 "is_active":    True,
                 "url":          data.get("url") or job_row.get("url"),
+                "category":     data.get("category") or job_row.get("category"),
                 "salary_raw":   data.get("salary_raw") or job_row.get("salary_raw"),
                 "salary_min":   data.get("salary_min") or job_row.get("salary_min"),
                 "salary_max":   data.get("salary_max") or job_row.get("salary_max"),

@@ -9,6 +9,35 @@ DA_TITLE_KEYWORDS = [
     "financial analyst", "risk analyst", "operations analyst",
 ]
 
+DS_TITLE_KEYWORDS = [
+    "data scientist", "data science", "nhà khoa học dữ liệu",
+]
+
+AI_TITLE_KEYWORDS = [
+    "ai engineer", "machine learning engineer", "ml engineer",
+    "deep learning engineer", "nlp engineer", "computer vision engineer",
+    "artificial intelligence engineer", "genai engineer", "llm engineer",
+    "generative ai", "kỹ sư trí tuệ nhân tạo",
+]
+
+# Thứ tự kiểm tra: DA trước, rồi DS, rồi AI — job khớp nhiều nhóm (vd tiêu đề
+# hybrid "Data Analyst/Data Scientist") sẽ được gán vào nhóm khớp trước.
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "DA": DA_TITLE_KEYWORDS,
+    "DS": DS_TITLE_KEYWORDS,
+    "AI": AI_TITLE_KEYWORDS,
+}
+
+
+def classify_job_category(title: str) -> Optional[str]:
+    """Phân loại job vào 1 trong 3 nhóm ngành: DA (Data/Business Analyst),
+    DS (Data Scientist), AI (AI/ML Engineer). Trả về None nếu không khớp nhóm nào."""
+    title_lower = title.lower()
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(kw in title_lower for kw in keywords):
+            return category
+    return None
+
 SKILL_KEYWORDS = {
     "Python":     ["python"],
     "SQL":        ["sql", "mysql", "postgresql", "mssql", "sql server"],
@@ -42,8 +71,9 @@ LEVEL_PATTERNS = {
 
 
 def is_da_job(title: str) -> bool:
-    title_lower = title.lower()
-    return any(kw in title_lower for kw in DA_TITLE_KEYWORDS)
+    """Cổng lọc chung cho tất cả crawler — nay bao gồm cả DA/DS/AI (tên hàm giữ
+    nguyên để không phải sửa hết chỗ gọi, nhưng ý nghĩa đã mở rộng)."""
+    return classify_job_category(title) is not None
 
 
 def normalize_title(title: str) -> str:

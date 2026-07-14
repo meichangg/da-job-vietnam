@@ -69,6 +69,7 @@ def upsert_job(session, data: dict) -> tuple:
     if job:
         job.last_seen_at = datetime.utcnow()
         job.is_active = True
+        job.category = data.get("category", job.category)
         job.salary_raw = data.get("salary_raw", job.salary_raw)
         job.salary_min = data.get("salary_min", job.salary_min)
         job.salary_max = data.get("salary_max", job.salary_max)
@@ -85,6 +86,7 @@ def upsert_job(session, data: dict) -> tuple:
         level            = data.get("level"),
         job_type         = data.get("job_type"),
         location         = data.get("location"),
+        category         = data.get("category", "DA"),
         salary_min       = data.get("salary_min"),
         salary_max       = data.get("salary_max"),
         salary_raw       = data.get("salary_raw"),

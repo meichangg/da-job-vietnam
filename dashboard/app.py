@@ -50,7 +50,7 @@ def supabase_get(table: str, select: str = "*", extra_params: dict = None) -> li
 def load_jobs() -> pd.DataFrame:
     rows = supabase_get(
         "jobs",
-        select="id,title,url,location,level,salary_min,salary_max,salary_raw,is_active,first_seen_at,last_seen_at,closed_at,companies(name),sources(name)"
+        select="id,title,url,location,level,category,salary_min,salary_max,salary_raw,is_active,first_seen_at,last_seen_at,closed_at,companies(name),sources(name)"
     )
     df = pd.json_normalize(rows)
     df = df.rename(columns={"companies.name": "company", "sources.name": "source"})
@@ -303,7 +303,7 @@ st.subheader("Danh sách jobs DA đang tuyển")
 
 active_df = df_jobs[df_jobs["is_active"] == True].copy() if "is_active" in df_jobs.columns else df_jobs.copy()
 
-fcol1, fcol2, fcol3 = st.columns(3)
+fcol1, fcol2, fcol3, fcol4 = st.columns(4)
 with fcol1:
     src_opts = active_df["source"].dropna().unique().tolist() if "source" in active_df.columns else []
     src_filter = st.multiselect("Nguồn", options=src_opts, default=[])
@@ -313,6 +313,9 @@ with fcol2:
 with fcol3:
     lvl_opts = sorted(active_df["level"].dropna().unique().tolist()) if "level" in active_df.columns else []
     lvl_filter = st.multiselect("Cấp bậc", options=lvl_opts, default=[])
+with fcol4:
+    cat_opts = sorted(active_df["category"].dropna().unique().tolist()) if "category" in active_df.columns else []
+    cat_filter = st.multiselect("Nhóm ngành", options=cat_opts, default=[])
 
 filtered = active_df.copy()
 if src_filter:
@@ -321,11 +324,13 @@ if loc_filter:
     filtered = filtered[filtered["location"].isin(loc_filter)]
 if lvl_filter:
     filtered = filtered[filtered["level"].isin(lvl_filter)]
+if cat_filter:
+    filtered = filtered[filtered["category"].isin(cat_filter)]
 
-show_cols = [c for c in ["title", "company", "source", "location", "level", "salary_raw", "first_seen_at", "url"] if c in filtered.columns]
+show_cols = [c for c in ["title", "company", "source", "location", "level", "category", "salary_raw", "first_seen_at", "url"] if c in filtered.columns]
 show_df = filtered[show_cols].rename(columns={
     "title": "Tên Job", "company": "Công ty", "source": "Nguồn",
-    "location": "Địa điểm", "level": "Cấp bậc",
+    "location": "Địa điểm", "level": "Cấp bậc", "category": "Nhóm ngành",
     "salary_raw": "Lương", "first_seen_at": "Ngày thấy lần đầu",
     "url": "Link",
 })
