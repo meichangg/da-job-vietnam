@@ -1,0 +1,36 @@
+name: Telegram Bot Listener
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # kiểm tra tin nhắn Telegram mỗi 5 phút
+  workflow_dispatch:
+
+permissions:
+  actions: write   # cần quyền này để lệnh /crawl có thể kích hoạt workflow crawl
+
+jobs:
+  listen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install httpx python-dotenv loguru
+
+      - name: Check Telegram commands
+        env:
+          SUPABASE_URL:       ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:       ${{ secrets.SUPABASE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO:        ${{ github.repository }}
+        run: python telegram_bot.py

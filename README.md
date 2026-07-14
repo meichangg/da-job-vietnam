@@ -108,6 +108,24 @@ python notify.py --dry-run   # chỉ in ra nội dung, không gửi đi đâu
 python notify.py             # gửi thật (cần đã điền đủ biến trong .env)
 ```
 
+## 10. Điều khiển qua lệnh Telegram (tùy chọn)
+
+Ngoài thông báo 1 chiều (`notify.py`), `telegram_bot.py` cho phép **ra lệnh 2 chiều** qua chat với bot:
+
+- `/crawl` — kích hoạt workflow crawl chính chạy ngay (không đợi trong lệnh này vì crawl mất nhiều phút; trả lời ngay là "đã kích hoạt", xem kết quả trên dashboard sau ~15-30 phút)
+- `/report` — trả lời ngay báo cáo job hiện tại
+- `/status` — xem 5 lần crawl gần nhất
+- `/help` — danh sách lệnh
+
+Chạy qua workflow `.github/workflows/telegram_listener.yml`, kiểm tra tin nhắn mới **mỗi 5 phút** (đây là polling, không phải phản hồi tức thì — do project không có server chạy liên tục 24/7). Vì lý do bảo mật, bot **chỉ nhận lệnh từ đúng `TELEGRAM_CHAT_ID`** đã cấu hình, tin nhắn từ chat khác sẽ bị bỏ qua.
+
+Không cần thêm secret nào ngoài các secret Telegram đã có ở mục 9 — `GITHUB_TOKEN` được GitHub Actions tự cấp, chỉ cần workflow có khai báo `permissions: actions: write` (đã có sẵn trong file).
+
+Test local:
+```bash
+python telegram_bot.py    # xử lý 1 lần các lệnh đang chờ, dùng để test trước khi đẩy lên GitHub
+```
+
 ## Lưu ý / hạn chế đã biết
 
 - **TopCV**: dùng Cloudflare chống bot, thỉnh thoảng 1 lượt crawl bị chặn hoàn toàn (đã có retry tự động, nhưng không đảm bảo 100%). Đây là nguồn phụ, không ảnh hưởng lớn tới tổng dữ liệu.
