@@ -87,6 +87,27 @@ Project có sẵn workflow GitHub Actions (`.github/workflows/weekly_crawl.yml`)
    SUPABASE_KEY = "your-anon-or-service-key"
    ```
 
+## 9. Thông báo hàng ngày qua Telegram + Email (tùy chọn)
+
+`notify.py` đọc dữ liệu đã crawl (không tự crawl) và gửi báo cáo: tổng số job đang tuyển, danh sách job mới trong ngày kèm link. Workflow `.github/workflows/daily_notify.yml` chạy sẵn lúc **15h chiều (giờ VN)** mỗi ngày.
+
+**Thiết lập Telegram:**
+1. Mở Telegram, chat với **@BotFather** → gõ `/newbot`, làm theo hướng dẫn để lấy `TELEGRAM_BOT_TOKEN`.
+2. Nhắn bất kỳ tin nào cho bot vừa tạo, sau đó mở trình duyệt vào:
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` — lấy giá trị `chat.id` trong JSON trả về, đó là `TELEGRAM_CHAT_ID`.
+
+**Thiết lập Email (Gmail):**
+1. Bật xác minh 2 bước (2FA) cho tài khoản Gmail nếu chưa bật.
+2. Vào [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), tạo 1 "App Password" mới — dùng mật khẩu này cho `SMTP_PASSWORD` (không dùng mật khẩu Gmail thường).
+
+**Bật trên GitHub Actions**: vào **Settings → Secrets and variables → Actions**, thêm các secret: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SMTP_EMAIL`, `SMTP_PASSWORD`, `NOTIFY_EMAIL_TO` (cùng với `SUPABASE_URL`/`SUPABASE_KEY` đã có).
+
+**Test local trước khi push:**
+```bash
+python notify.py --dry-run   # chỉ in ra nội dung, không gửi đi đâu
+python notify.py             # gửi thật (cần đã điền đủ biến trong .env)
+```
+
 ## Lưu ý / hạn chế đã biết
 
 - **TopCV**: dùng Cloudflare chống bot, thỉnh thoảng 1 lượt crawl bị chặn hoàn toàn (đã có retry tự động, nhưng không đảm bảo 100%). Đây là nguồn phụ, không ảnh hưởng lớn tới tổng dữ liệu.
