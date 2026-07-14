@@ -121,10 +121,26 @@ Chạy qua workflow `.github/workflows/telegram_listener.yml`, kiểm tra tin nh
 
 Không cần thêm secret nào ngoài các secret Telegram đã có ở mục 9 — `GITHUB_TOKEN` được GitHub Actions tự cấp, chỉ cần workflow có khai báo `permissions: actions: write` (đã có sẵn trong file).
 
+`/report` hỗ trợ lọc theo nhóm ngành: `/report DA`, `/report DS`, `/report AI` (xem mục 11 bên dưới).
+
 Test local:
 ```bash
 python telegram_bot.py    # xử lý 1 lần các lệnh đang chờ, dùng để test trước khi đẩy lên GitHub
 ```
+
+## 11. Nhóm ngành: DA / DS / AI
+
+Mỗi job được tự động phân loại vào 1 trong 3 nhóm dựa trên tiêu đề (`utils/normalizer.py:classify_job_category`):
+
+- **DA** — Data Analyst, Business Analyst, BI Analyst...
+- **DS** — Data Scientist
+- **AI** — AI Engineer, Machine Learning Engineer...
+
+Cả 4 crawler đều tìm kiếm thêm từ khóa "data scientist", "machine learning engineer", "ai engineer" ngoài các từ khóa DA/BA/BI sẵn có. Xem theo nhóm ngành ở:
+- Dashboard: bộ lọc "Nhóm ngành" trong bảng danh sách job
+- Telegram: `/report DA`, `/report DS`, `/report AI`
+
+Lưu ý: thêm từ khóa tìm kiếm khiến mỗi lần crawl chạy lâu hơn (~30-50%) và với TopCV cụ thể, tăng thêm số lượt request nên khả năng bị Cloudflare chặn cũng cao hơn một chút.
 
 ## Lưu ý / hạn chế đã biết
 
