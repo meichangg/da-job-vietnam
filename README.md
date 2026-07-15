@@ -112,20 +112,36 @@ python notify.py             # gửi thật (cần đã điền đủ biến tro
 
 Ngoài thông báo 1 chiều (`notify.py`), `telegram_bot.py` cho phép **ra lệnh 2 chiều** qua chat với bot:
 
-- `/crawl` — kích hoạt workflow crawl chính chạy ngay (không đợi trong lệnh này vì crawl mất nhiều phút; trả lời ngay là "đã kích hoạt", xem kết quả trên dashboard sau ~15-30 phút)
-- `/report` — trả lời ngay báo cáo job hiện tại
+- `/crawl` — kích hoạt workflow crawl chính chạy ngay (không đợi trong lệnh này vì crawl mất nhiều phút; trả lời ngay là "đã kích hoạt", xem kết quả trên dashboard sau ~15-30 phút). Cần thêm `GITHUB_TOKEN` (Personal Access Token, quyền `actions:write`) + `GITHUB_REPO` (`owner/repo`) nếu chạy qua webhook (mục dưới) — nếu bỏ qua, lệnh này báo lỗi nhưng các lệnh khác vẫn dùng bình thường.
+- `/report` [DA|DS|AI] — báo cáo job hiện tại, có thể lọc theo nhóm ngành
 - `/status` — xem 5 lần crawl gần nhất
 - `/help` — danh sách lệnh
 
-Chạy qua workflow `.github/workflows/telegram_listener.yml`, kiểm tra tin nhắn mới **mỗi 5 phút** (đây là polling, không phải phản hồi tức thì — do project không có server chạy liên tục 24/7). Vì lý do bảo mật, bot **chỉ nhận lệnh từ đúng `TELEGRAM_CHAT_ID`** đã cấu hình, tin nhắn từ chat khác sẽ bị bỏ qua.
+Có 2 cách chạy, chọn 1:
 
-Không cần thêm secret nào ngoài các secret Telegram đã có ở mục 9 — `GITHUB_TOKEN` được GitHub Actions tự cấp, chỉ cần workflow có khai báo `permissions: actions: write` (đã có sẵn trong file).
+**Cách A — Webhook qua Vercel (khuyến nghị, phản hồi tức thì trong vài giây):**
+1. Tạo tài khoản [vercel.com](https://vercel.com), đăng nhập bằng GitHub, **Import** repo này (Vercel tự nhận diện `api/telegram_webhook.py` là 1 serverless function nhờ `pyproject.toml`).
+2. Thêm Environment Variables trên Vercel: `SUPABASE_URL`, `SUPABASE_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET` (tự đặt 1 chuỗi ngẫu nhiên bất kỳ, dùng để xác thực request thật sự từ Telegram).
+3. Deploy xong, lấy domain chính (dạng `https://<project>.vercel.app`, không phải URL theo từng lần deploy), rồi đăng ký webhook 1 lần:
+   ```python
+   import httpx
+   httpx.post(
+       f"https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook",
+       data={"url": "https://<project>.vercel.app/api/telegram_webhook",
+             "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"},
+   )
+   ```
+4. Sau khi webhook hoạt động, **tắt** workflow `Telegram Bot Listener` trên GitHub Actions (Actions → chọn workflow → "..." → Disable) — Telegram chỉ gửi update tới 1 nơi (webhook hoặc polling), không phải cả 2, nên workflow polling giờ dư thừa.
 
-`/report` hỗ trợ lọc theo nhóm ngành: `/report DA`, `/report DS`, `/report AI` (xem mục 11 bên dưới).
+**Cách B — Polling qua GitHub Actions (đơn giản hơn, nhưng trễ ~1-5 phút, có lúc hơn):**
+- Workflow `.github/workflows/telegram_listener.yml` tự kiểm tra tin nhắn mới mỗi 5 phút, không cần hạ tầng gì thêm ngoài các secret Telegram đã có ở mục 9.
+- Đây là lựa chọn mặc định nếu không muốn setup Vercel.
 
-Test local:
+Vì lý do bảo mật, bot **chỉ nhận lệnh từ đúng `TELEGRAM_CHAT_ID`** đã cấu hình (cả 2 cách), tin nhắn từ chat khác sẽ bị bỏ qua.
+
+Test local (dùng chung cho cả 2 cách, xử lý ngay các lệnh đang chờ mà không cần đợi lịch):
 ```bash
-python telegram_bot.py    # xử lý 1 lần các lệnh đang chờ, dùng để test trước khi đẩy lên GitHub
+python telegram_bot.py
 ```
 
 ## 11. Nhóm ngành: DA / DS / AI
