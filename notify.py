@@ -136,12 +136,34 @@ def build_report(category: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def send_telegram(text: str) -> None:
+DS_AI_KEYBOARD = {
+    "inline_keyboard": [[
+        {"text": "📊 Xem thêm job Data Science", "callback_data": "report_DS"},
+        {"text": "🤖 Xem thêm job AI", "callback_data": "report_AI"},
+    ]]
+}
+
+
+TELEGRAM_MAX_LEN = 4096
+
+
+def _truncate_for_telegram(text: str) -> str:
+    if len(text) <= TELEGRAM_MAX_LEN:
+        return text
+    note = "\n\n... (đã cắt bớt, xem đầy đủ trên dashboard)"
+    return text[: TELEGRAM_MAX_LEN - len(note)] + note
+
+
+def send_telegram(text: str, with_buttons: bool = False) -> None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logger.warning("[Telegram] Chưa cấu hình TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID — bỏ qua")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    resp = httpx.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=20)
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": _truncate_for_telegram(text)}
+    if with_buttons:
+        import json
+        payload["reply_markup"] = json.dumps(DS_AI_KEYBOARD)
+    resp = httpx.post(url, data=payload, timeout=20)
     resp.raise_for_status()
     logger.success("[Telegram] Đã gửi báo cáo")
 
@@ -165,17 +187,23 @@ def send_email(subject: str, text: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Gửi báo cáo job hàng ngày qua Telegram/Email")
     parser.add_argument("--dry-run", action="store_true", help="Chỉ in ra nội dung, không gửi")
-    parser.add_argument("--category", type=str, default=None, help="Lọc theo nhóm ngành: DA | DS | AI")
+    parser.add_argument(
+        "--category", type=str, default="DA",
+        help="Lọc theo nhóm ngành: DA | DS | AI | ALL (mặc định DA — dùng cho báo cáo hàng ngày)",
+    )
     args = parser.parse_args()
 
-    text = build_report(args.category)
+    category = None if args.category.upper() == "ALL" else args.category
+    text = build_report(category)
 
     if args.dry_run:
         print(text)
         return
 
-    send_telegram(text)
-    label = f" ({args.category})" if args.category else ""
+    # Báo cáo hàng ngày mặc định chỉ DA; kèm nút bấm để xem thêm DS/AI khi cần,
+    # không gửi kèm buttons nếu người dùng chủ động chọn nhóm khác qua --category.
+    send_telegram(text, with_buttons=(category == "DA"))
+    label = f" ({category})" if category else ""
     send_email(f"[DA Job Market] Báo cáo{label} {date.today().isoformat()}", text)
 
 

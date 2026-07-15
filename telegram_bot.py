@@ -56,7 +56,20 @@ def confirm_updates(last_update_id: int) -> None:
 
 
 def reply(chat_id: str, text: str) -> None:
-    httpx.post(f"{API_BASE}/sendMessage", data={"chat_id": chat_id, "text": text}, timeout=20)
+    httpx.post(
+        f"{API_BASE}/sendMessage",
+        data={"chat_id": chat_id, "text": notify._truncate_for_telegram(text)},
+        timeout=20,
+    )
+
+
+def answer_callback(callback_query_id: str, text: str = "") -> None:
+    """Tắt trạng thái 'đang xử lý' trên nút bấm sau khi nhận được callback."""
+    httpx.post(
+        f"{API_BASE}/answerCallbackQuery",
+        data={"callback_query_id": callback_query_id, "text": text},
+        timeout=20,
+    )
 
 
 def trigger_crawl_workflow() -> str:
@@ -151,6 +164,27 @@ def handle_command(chat_id: str, text: str) -> None:
         reply(chat_id, f"Không nhận diện được lệnh '{text}'.\n\n{HELP_TEXT}")
 
 
+def handle_callback(callback: dict) -> None:
+    """Xử lý khi người dùng bấm nút (vd 'Xem thêm job DS') trong tin nhắn báo cáo."""
+    callback_id = callback.get("id", "")
+    message     = callback.get("message") or {}
+    chat_id     = str((message.get("chat") or {}).get("id", ""))
+    data        = callback.get("data", "")
+
+    if TELEGRAM_CHAT_ID and chat_id != str(TELEGRAM_CHAT_ID):
+        logger.warning(f"Bỏ qua callback từ chat không xác định: {chat_id}")
+        answer_callback(callback_id)
+        return
+
+    if data.startswith("report_"):
+        category = data.removeprefix("report_")
+        logger.info(f"Nhận callback: {data}")
+        answer_callback(callback_id, f"Đang lấy báo cáo {category}...")
+        reply(chat_id, notify.build_report(category))
+    else:
+        answer_callback(callback_id)
+
+
 def main() -> None:
     if not TELEGRAM_BOT_TOKEN:
         logger.error("Chưa cấu hình TELEGRAM_BOT_TOKEN")
@@ -164,6 +198,11 @@ def main() -> None:
     last_update_id = updates[-1]["update_id"]
 
     for upd in updates:
+        callback = upd.get("callback_query")
+        if callback:
+            handle_callback(callback)
+            continue
+
         msg = upd.get("message") or upd.get("edited_message")
         if not msg or "text" not in msg:
             continue
