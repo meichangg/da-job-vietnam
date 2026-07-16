@@ -2,7 +2,7 @@ name: Daily Job Notification
 
 on:
   schedule:
-    - cron: '0 8 * * *'    # 15h chiều GMT+7 (8h UTC)
+    - cron: '0 6 * * *'    # 13h chiều GMT+7 (6h UTC)
   workflow_dispatch:        # Cho phép chạy tay
 
 jobs:

@@ -89,7 +89,7 @@ Project có sẵn workflow GitHub Actions (`.github/workflows/weekly_crawl.yml`)
 
 ## 9. Thông báo hàng ngày qua Telegram + Email (tùy chọn)
 
-`notify.py` đọc dữ liệu đã crawl (không tự crawl) và gửi báo cáo: tổng số job đang tuyển, danh sách job mới trong ngày kèm link. Workflow `.github/workflows/daily_notify.yml` chạy sẵn lúc **15h chiều (giờ VN)** mỗi ngày.
+`notify.py` đọc dữ liệu đã crawl (không tự crawl) và gửi báo cáo: tổng số job đang tuyển, danh sách job mới trong ngày kèm link. Workflow `.github/workflows/daily_notify.yml` chạy sẵn lúc **13h chiều (giờ VN)** mỗi ngày.
 
 **Thiết lập Telegram:**
 1. Mở Telegram, chat với **@BotFather** → gõ `/newbot`, làm theo hướng dẫn để lấy `TELEGRAM_BOT_TOKEN`.
