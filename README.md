@@ -1,17 +1,23 @@
 # DA Job Market Vietnam
 
-Hệ thống tự động thu thập, lưu trữ và trực quan hóa dữ liệu tuyển dụng Data Analyst / Business Analyst / BI tại Việt Nam từ 4 nguồn: **TopCV, VietnamWorks, YBox, LinkedIn**.
+Hệ thống tự động thu thập, lưu trữ và trực quan hóa dữ liệu tuyển dụng Data Analyst / Data Scientist / AI Engineer tại Việt Nam từ 4 nguồn: **TopCV, VietnamWorks, YBox, LinkedIn**.
 
 ## Kiến trúc
 
 ```
 crawlers/   -> code crawl từng nguồn (base_crawler.py là lớp cha dùng chung)
 db/         -> schema (models.py) + tầng thao tác database (2 cách: Postgres trực tiếp / Supabase REST)
-utils/      -> chuẩn hóa dữ liệu (title, location, skill, level, lương)
+utils/      -> chuẩn hóa dữ liệu (title, location, skill, level, lương, nhóm ngành DA/DS/AI)
 dashboard/  -> app Streamlit trực quan hóa dữ liệu
 scripts/    -> script phụ, độc lập với project (vd linkedin_standalone.py)
 main.py     -> entry point chạy crawler
-.github/workflows/weekly_crawl.yml -> tự động crawl hàng ngày qua GitHub Actions
+notify.py   -> gửi báo cáo hàng ngày qua Email + Telegram (mục 9)
+telegram_bot.py       -> xử lý lệnh Telegram theo kiểu polling (mục 10, Cách B)
+api/telegram_webhook.py -> xử lý lệnh Telegram tức thì, deploy qua Vercel (mục 10, Cách A)
+pyproject.toml        -> cấu hình để Vercel nhận diện đúng webhook function
+.github/workflows/weekly_crawl.yml     -> tự động crawl hàng ngày
+.github/workflows/daily_notify.yml     -> tự động gửi báo cáo hàng ngày
+.github/workflows/telegram_listener.yml -> polling lệnh Telegram (nếu không dùng Vercel)
 ```
 
 ## 1. Yêu cầu
@@ -43,9 +49,12 @@ copy .env.example .env          # Windows
 Mở `.env` và điền:
 
 - **`DATABASE_URL`** — connection string Postgres của Supabase (Project Settings → Database → Connection string). Dùng cho lần chạy đầu tiên để tự tạo bảng, và khi chạy crawler/dashboard local.
-- **`SUPABASE_URL`** / **`SUPABASE_KEY`** — lấy ở Project Settings → API. Dùng khi chạy trên GitHub Actions hoặc deploy dashboard lên Streamlit Cloud (không cần lộ mật khẩu database trực tiếp).
+- **`SUPABASE_KEY`** — Project Settings → **API Keys** → mục **"Secret keys"** (không dùng "Publishable key" — key đó chỉ dành cho phía client, không đủ quyền cho backend).
+- **`SUPABASE_URL`** — trang API Keys không hiển thị thẳng URL nữa; lấy Project ID ở Project Settings → **General**, rồi tự ghép thành `https://<Project ID>.supabase.co`.
 
 Chỉ cần điền 1 trong 2 cách để chạy crawler; nhưng **dashboard chỉ hỗ trợ `SUPABASE_URL`+`SUPABASE_KEY`** (không đọc `DATABASE_URL`).
+
+> **Lưu ý**: nếu vừa tạo bảng bằng `DATABASE_URL` (mục 4) rồi chuyển ngay sang dùng `SUPABASE_URL`+`SUPABASE_KEY`, có thể gặp lỗi kiểu "column does not exist" dù bảng đã tạo đúng — do Supabase cache schema riêng, đôi khi chưa nhận diện kịp thay đổi. Vào Supabase → SQL Editor, chạy `NOTIFY pgrst, 'reload schema';` rồi thử lại.
 
 ## 4. Khởi tạo database (chạy 1 lần đầu tiên)
 
